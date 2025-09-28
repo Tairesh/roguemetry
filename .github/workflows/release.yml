@@ -1,0 +1,64 @@
+name: release
+
+permissions:
+  contents: write
+
+on:
+  push:
+    tags:
+      - v[0-9]+.*
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: "Checkout code"
+        uses: actions/checkout@v5
+
+      - name: "Install Rust toolchain"
+        uses: dtolnay/rust-toolchain@v1
+        with:
+          toolchain: stable
+          components: clippy,rustfmt
+
+      - name: "Set up Just"
+        uses: extractions/setup-just@v3
+
+      - name: "Run checks"
+        run: just check
+
+      - name: "Check semver"
+        uses: obi1kenobi/cargo-semver-checks-action@v2
+
+  publish:
+    needs: test
+    environment: crates.io
+    runs-on: ubuntu-latest
+    steps:
+      - name: "Checkout code"
+        uses: actions/checkout@v5
+
+      - name: "Install Rust toolchain"
+        uses: dtolnay/rust-toolchain@v1
+        with:
+          toolchain: stable
+
+      - name: "Publish to crates.io"
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+        run:
+          cargo publish
+
+  create-release:
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - name: "Checkout code"
+        uses: actions/checkout@v5
+
+      - name: "Create release"
+        uses: taiki-e/create-gh-release-action@v1
+        with:
+#          changelog: CHANGELOG.md
+          token: ${{ secrets.GITHUB_TOKEN }}
