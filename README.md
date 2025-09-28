@@ -18,7 +18,7 @@ It's mainly made for my roguelikes, like [Followers Of The Midia](https://github
     *   Line drawing to another `Point` using Bresenham's line algorithm.
     *   Conversion to and from map/grid indices.
 *   **Direction (`Direction`, `DIR8`, `DIR9`)**: Represents cardinal and intercardinal directions (e.g., North, NorthWest). Useful for grid-based movements.
-*   **2D Direction (`TwoDimDirection`)**: Represents horizontal-only directions (East or West), useful in specific 2D contexts. It includes error handling for conversions from the more general `Direction` type (which can represent vertical or diagonal movements).
+*   **1D Direction (`OneDimensionalDirection`)**: Represents horizontal-only directions (East or West), useful in specific contexts (like direction sprite looking at). It includes error handling for conversions from the more general `Direction` type (which can represent vertical or diagonal movements).
 *   **Circles**:
     *   Generate points for a circle outline using `circles::circle(center: Point, radius: i32)`.
     *   Pre-defined constant arrays of points for circles of various radii (e.g., `CIRCLE5`, `CIRCLE7`, `CIRCLE9`, `CIRCLE11`, `CIRCLE13`).
@@ -43,6 +43,16 @@ fn main() {
     let p3 = p1 + Direction::NorthEast;
     println!("Point p1: {:?}, after moving NorthEast: {:?}", p1, p3); // p1: Point { x: 10, y: 20 }, after moving NorthEast: Point { x: 11, y: 19 }
 
+    // Get direction from one point to another
+    let direction = p1.direction_to(p2);
+    println!("Direction from {:?} to {:?}: {:?}", p1, p2, direction); // Direction from Point { x: 10, y: 20 } to Point { x: 30, y: 25 }: NorthEast
+    
+    // Get sprite direction (one-dimensional) to mirror character sprite based on movement direction
+    if let Some(d) = direction.to_one_dimensional() {
+        println!("One-dimensional direction: {:?}", d); // One-dimensional direction: East
+    } else {
+        println!("Direction is vertical, or `Here`, no need to change sprite direction.");
+    }
 
     // Calculate distance
     let distance = p1.distance_to(p2);
@@ -98,27 +108,41 @@ Then, run `cargo build` or `cargo run` to download and compile the dependency.
 
 ## Development
 
-This repository includes a `Makefile` with common development commands:
+This repository uses 'just' as a command runner to simplify common tasks. You can install it from cargo:
 
-*   `make build`: Compile the library in release mode.
-*   `make test`: Run the unit tests.
-*   `make fmt`: Format the codebase.
-*   `make fmt-check`: Check if the codebase is formatted.
-*   `make clippy`: Run Clippy for linting and style checks.
-*   `make check`: Run `fmt-check`, `test`, and `clippy`. This is useful for a quick sanity check.
-*   `make before-commit`: Runs `fmt`, `update`, `check`. Recommended before committing changes.
-*   `make update`: Update dependencies.
-*   `make clean`: Remove build artifacts.
+```bash
+cargo install just
+```
 
-Ensure you have `make` installed to use these commands.
+Before commiting changes, it's recommended to run the default command to ensure code quality:
+
+```bash
+just before-commit
+```
+
+### Available Commands
+
+
+*   `just before-commit` (default): Runs `fmt`, `update`, `check`. Recommended before committing changes.
+*   `just build`: Compile the library in release mode.
+*   `just test`: Run the unit tests.
+*   `just fmt`: Format the codebase.
+*   `just fmt-check`: Check if the codebase is formatted.
+*   `just clippy`: Run Clippy for linting and style checks.
+*   `just check`: Run `fmt-check`, `test`, and `clippy`. This is useful for a quick sanity check.
+*   `just update`: Update dependencies.
+*   `just clean`: Remove build artifacts.
+
+### Makefile
+There is also a `Makefile` available with same commands as `just` for those who prefer using `make`.
 
 ## Contributing
 
 Contributions are welcome! If you have improvements, bug fixes, or new features you'd like to add, please follow these steps:
 
-1.  Fork the repository.
+1.  Fork the repository and clone your fork.
 2.  Create a new branch for your changes (`git checkout -b feature/your-feature-name`).
-3.  Make your changes and ensure they pass all checks (`make check`).
+3.  Make your changes and ensure they pass all checks (`just before-commit`).
 4.  Commit your changes (`git commit -am 'Add some feature'`).
 5.  Push to the branch (`git push origin feature/your-feature-name`).
 6.  Create a new Pull Request.

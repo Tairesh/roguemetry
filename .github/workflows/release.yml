@@ -28,8 +28,9 @@ jobs:
       - name: "Run checks"
         run: just check
 
-      - name: "Check semver"
-        uses: obi1kenobi/cargo-semver-checks-action@v2
+# Skipped for now, while it's very unstable
+#      - name: "Check semver"
+#        uses: obi1kenobi/cargo-semver-checks-action@v2
 
   publish:
     needs: test

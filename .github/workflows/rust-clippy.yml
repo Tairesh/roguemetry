@@ -5,11 +5,13 @@ on:
     paths:
       - '**/*.rs'
       - 'Cargo.toml'
+      - 'Cargo.lock'
     branches: [ main ]
   pull_request:
     paths:
       - '**/*.rs'
       - 'Cargo.toml'
+      - 'Cargo.lock'
     branches: [ main ]
   workflow_dispatch:
 

@@ -5,7 +5,7 @@ license = "MIT"
 homepage = "https://github.com/Tairesh/roguemetry"
 repository = "https://github.com/Tairesh/roguemetry"
 readme = "README.md"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2021"
 
 [dependencies]
