@@ -35,7 +35,7 @@ impl Point {
     #[inline]
     #[must_use]
     /// Create a random point within a range
-    pub fn random<R: rand::Rng + ?Sized>(
+    pub fn random<R: rand::Rng + rand::RngExt + ?Sized>(
         rng: &mut R,
         horizontal: std::ops::Range<i32>,
         vertical: std::ops::Range<i32>,
