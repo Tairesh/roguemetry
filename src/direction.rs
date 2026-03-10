@@ -25,12 +25,13 @@ pub const DIR9: [Direction; 9] = [
     Direction::NorthEast,
 ];
 
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Default, Copy, Clone, PartialEq, Eq, Hash)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum Direction {
     Here,
     North,
     NorthEast,
+    #[default]
     East,
     SouthEast,
     South,
@@ -56,15 +57,9 @@ impl Direction {
     }
 }
 
-impl Default for Direction {
-    fn default() -> Self {
-        Self::East
-    }
-}
-
 impl Direction {
     #[cfg(feature = "rand")]
-    pub fn random<R: rand::Rng + ?Sized>(rng: &mut R, include_here: bool) -> Self {
+    pub fn random<R: rand::Rng + rand::RngExt + ?Sized>(rng: &mut R, include_here: bool) -> Self {
         match rng.random_range(0..=if include_here { 8 } else { 7 }) {
             0 => Direction::East,
             1 => Direction::SouthEast,
