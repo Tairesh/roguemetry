@@ -1,4 +1,4 @@
-pub use direction::{Direction, DIR8, DIR9};
+pub use direction::{Direction, DIR2_EDGE_ONCE, DIR4, DIR4_OPPOSITE, DIR8, DIR9};
 pub use one_direction::{OneDimensionConvertError, OneDimensionalDirection};
 pub use point::Point;
 
