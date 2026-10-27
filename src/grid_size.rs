@@ -335,7 +335,7 @@ mod tests {
             GridSize::try_from((i32::MAX.unsigned_abs() + 1, 1)),
             Err(GridSizeError)
         );
-        assert!(!GridSizeError.to_string().is_empty());
+        assert_ne!(GridSizeError.to_string(), "");
     }
 
     #[test]
