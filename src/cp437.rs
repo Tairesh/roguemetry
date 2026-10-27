@@ -597,7 +597,7 @@ mod tests {
         let test2: Vec<char> = vec![
             '☺', '☻', '♥', '♦', '♣', '♠', '•', '◘', '○', '◙', '♂', '♀', '♪', '♫', '☼',
         ];
-        for (ch, i) in test.into_iter().zip(test2.into_iter()) {
+        for (ch, i) in test.into_iter().zip(test2) {
             assert_eq!(to_char(ch), i);
         }
     }

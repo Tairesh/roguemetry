@@ -5,7 +5,7 @@ license = "MIT"
 homepage = "https://github.com/Tairesh/roguemetry"
 repository = "https://github.com/Tairesh/roguemetry"
 readme = "README.md"
-version = "0.2.1"
+version = "0.3.0"
 edition = "2021"
 
 [dependencies]
@@ -13,6 +13,10 @@ vek = { version = "0.17", default-features = false }
 line_drawing = { version = "1.0" }
 rand = { version = "0.10", optional = true }
 serde = { version = "1.0", optional = true, features = ["derive"] }
+
+[dev-dependencies]
+bracket-pathfinding = "=0.8.7"
+rand = "0.10"
 
 [features]
 default = ["rand", "serde"]

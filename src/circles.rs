@@ -66,7 +66,12 @@ pub const CIRCLE5: [(i32, i32); 21] = [
 ];
 
 /// Returns a list of points that are on the circle with the given center and radius.
-pub fn circle(center: Point, radius: i32) -> Vec<Point> {
+///
+/// # Panics
+///
+/// Panics if `radius` exceeds `i32::MAX`.
+pub fn circle(center: Point, radius: u32) -> Vec<Point> {
+    let radius = i32::try_from(radius).expect("radius exceeds i32::MAX");
     line_drawing::BresenhamCircle::new(center.x, center.y, radius)
         .map(Point::from)
         .collect()

@@ -1,3 +1,4 @@
+use std::num::NonZeroU32;
 use std::ops::{Add, AddAssign, Div, DivAssign, Mul, MulAssign, Neg, Sub, SubAssign};
 use vek::num_traits::Zero;
 
@@ -48,13 +49,14 @@ impl Point {
 
     #[inline]
     #[must_use]
-    #[allow(clippy::cast_sign_loss)]
     /// Helper for map index conversion
-    pub fn to_index(self, width: i32) -> Option<usize> {
-        if self.x < 0 || self.y < 0 || self.x >= width {
+    pub fn to_index(self, width: u32) -> Option<usize> {
+        if self.x < 0 || self.y < 0 || self.x.unsigned_abs() >= width {
             None
         } else {
-            Some(((self.y * width) + self.x) as usize)
+            (self.y.unsigned_abs() as usize)
+                .checked_mul(width as usize)?
+                .checked_add(self.x.unsigned_abs() as usize)
         }
     }
 
@@ -63,8 +65,9 @@ impl Point {
     #[allow(clippy::cast_possible_truncation)]
     #[allow(clippy::cast_possible_wrap)]
     /// Helper for map index conversion
-    pub fn from_index(index: usize, width: i32) -> Point {
-        Point::new(index as i32 % width, index as i32 / width)
+    pub fn from_index(index: usize, width: NonZeroU32) -> Point {
+        let width = width.get() as usize;
+        Point::new((index % width) as i32, (index / width) as i32)
     }
 
     #[must_use]
@@ -79,7 +82,7 @@ impl Point {
     pub fn square_distance_to(self, other: Self) -> u32 {
         let dx = self.x.abs_diff(other.x);
         let dy = self.y.abs_diff(other.y);
-        dx * dx + dy * dy
+        dx.saturating_pow(2).saturating_add(dy.saturating_pow(2))
     }
 
     #[inline]
@@ -459,13 +462,15 @@ impl PartialEq<(i32, i32)> for Point {
 
 #[cfg(test)]
 mod tests {
+    use std::num::NonZeroU32;
+
     use super::{Direction, Point, Vec2};
 
     #[test]
     fn index_converting() {
         let pt = Point::new(1, 2);
         assert_eq!(21, pt.to_index(10).unwrap());
-        let pt2 = Point::from_index(21, 10);
+        let pt2 = Point::from_index(21, NonZeroU32::new(10).unwrap());
         assert_eq!(pt, pt2);
         let pt = Point::new(-1, 2);
         assert!(pt.to_index(10).is_none());
@@ -564,6 +569,6 @@ mod tests {
         assert_eq!(
             pt.line_to(pt2),
             [(0, 0), (1, 1), (2, 2), (3, 3), (4, 4), (5, 5)]
-        )
+        );
     }
 }

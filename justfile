@@ -16,7 +16,7 @@ test:
 	cargo test
 
 clippy:
-	cargo clippy -- -D warnings -D clippy::pedantic --verbose --no-deps
+	cargo clippy --all-targets -- -D warnings -D clippy::pedantic --verbose --no-deps
 
 clean:
 	cargo clean
