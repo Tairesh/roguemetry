@@ -21,7 +21,7 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
-  tests:
+  x86_64:
     runs-on: ubuntu-latest
     steps:
       - name: "Checkout code"
@@ -38,3 +38,35 @@ jobs:
 
       - name: "Run checks"
         run: just check
+
+  i686:
+    runs-on: ubuntu-latest
+    steps:
+      - name: "Checkout code"
+        uses: actions/checkout@v7
+
+      - name: "Install 32-bit C toolchain"
+        run: sudo apt-get update && sudo apt-get install -y gcc-multilib
+
+      - name: "Install Rust toolchain"
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: stable
+          targets: i686-unknown-linux-gnu
+
+      - name: "Run tests"
+        run: cargo test --target i686-unknown-linux-gnu
+
+  no-default-features:
+    runs-on: ubuntu-latest
+    steps:
+      - name: "Checkout code"
+        uses: actions/checkout@v7
+
+      - name: "Install Rust toolchain"
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: stable
+
+      - name: "Run tests"
+        run: cargo test --no-default-features

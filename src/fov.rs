@@ -17,11 +17,15 @@
 // DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-//! Field of view by recursive shadowcasting.
+//! Field of view by shadowcasting.
 //!
 //! The algorithm is a cell-for-cell port of `bracket-pathfinding` 0.8.7's `field_of_view_set`
 //! (<https://github.com/thebracket/bracket-lib>): the same eight 45° rays, the same eight octant
 //! scans and the same `f32` slope arithmetic. The result is a dense grid instead of a hash set.
+//! The scan keeps its own work stack instead of recursing, so its depth is not bounded by the
+//! thread's stack.
+
+use std::fmt;
 
 use super::{GridSize, Point};
 
@@ -38,14 +42,16 @@ const SECTORS: [(i32, i32); 8] = [
 ];
 
 /// Cells visible from one origin. Reuse with [`Fov::compute`].
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone)]
 pub struct Fov {
-    size: Point,
+    size: GridSize,
     visible: Vec<bool>,
     /// Inclusive lower corner of the cells marked visible; `min > max` when nothing is.
     min: Point,
     /// Inclusive upper corner of the cells marked visible.
     max: Point,
+    /// Scans waiting to run; scratch reused across casts.
+    pending: Vec<Scan>,
 }
 
 impl Default for Fov {
@@ -54,28 +60,55 @@ impl Default for Fov {
     }
 }
 
+impl PartialEq for Fov {
+    fn eq(&self, other: &Self) -> bool {
+        self.size == other.size
+            && self.visible == other.visible
+            && self.min == other.min
+            && self.max == other.max
+    }
+}
+
+impl Eq for Fov {}
+
+impl fmt::Debug for Fov {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("Fov")
+            .field("size", &self.size)
+            .field("visible", &self.visible)
+            .field("min", &self.min)
+            .field("max", &self.max)
+            .finish_non_exhaustive()
+    }
+}
+
 impl Fov {
     #[must_use]
     /// Create an empty field of view over a zero-sized rectangle.
     pub fn new() -> Self {
         Self {
-            size: Point::new(0, 0),
+            size: GridSize::default(),
             visible: Vec::new(),
             min: Point::new(0, 0),
             max: Point::new(-1, -1),
+            pending: Vec::new(),
         }
     }
 
+    #[inline]
     #[must_use]
     /// The rectangle the field of view was computed over.
     pub fn size(&self) -> GridSize {
-        GridSize::new(self.size.x.unsigned_abs(), self.size.y.unsigned_abs())
+        self.size
     }
 
+    #[inline]
     #[must_use]
     /// Whether `point` is visible. Always `false` outside the rectangle.
     pub fn contains(&self, point: Point) -> bool {
-        self.index(point).is_some_and(|index| self.visible[index])
+        self.size
+            .index_of(point)
+            .is_some_and(|index| self.visible[index])
     }
 
     /// The visible cells, in row-major order.
@@ -92,14 +125,10 @@ impl Fov {
         &mut self,
         origin: Point,
         range: u32,
-        size: impl Into<GridSize>,
+        size: GridSize,
         is_opaque: impl FnMut(Point) -> bool,
     ) {
-        // Cells past `i32::MAX` have no `Point`, so the rectangle is clamped to what is addressable.
-        let size = size
-            .into()
-            .map(|side| i32::try_from(side).unwrap_or(i32::MAX));
-        self.reset(Point::new(size.w, size.h));
+        self.reset(size);
         let range_2 = range.saturating_pow(2);
         let mut scanner = Scanner {
             center: origin,
@@ -117,20 +146,19 @@ impl Fov {
         ] {
             if visibility_per_sector[sector] {
                 for octant in octants {
-                    scanner.scan(octant, 1, 0., 1.);
+                    scanner.scan_octant(octant);
                 }
             }
         }
     }
 
-    /// Resize to `size` (non-negative) and clear every cell.
-    #[allow(clippy::cast_sign_loss)]
-    fn reset(&mut self, size: Point) {
+    /// Resize to `size` and clear every cell.
+    fn reset(&mut self, size: GridSize) {
         if size == self.size {
             for y in self.min.y..=self.max.y {
                 if let (Some(start), Some(end)) = (
-                    self.index(Point::new(self.min.x, y)),
-                    self.index(Point::new(self.max.x, y)),
+                    self.size.index_of(Point::new(self.min.x, y)),
+                    self.size.index_of(Point::new(self.max.x, y)),
                 ) {
                     self.visible[start..=end].fill(false);
                 }
@@ -138,28 +166,16 @@ impl Fov {
         } else {
             self.size = size;
             self.visible.clear();
-            self.visible
-                .resize(size.x as usize * size.y as usize, false);
+            self.visible.resize(size.area(), false);
         }
-        self.min = size;
+        self.min = Point::new(size.width(), size.height());
         self.max = Point::new(-1, -1);
-    }
-
-    fn index(&self, point: Point) -> Option<usize> {
-        if point.y < self.size.y {
-            point.to_index(self.size.x.unsigned_abs())
-        } else {
-            None
-        }
-    }
-
-    fn in_bounds(&self, point: Point) -> bool {
-        point.x >= 0 && point.x < self.size.x && point.y >= 0 && point.y < self.size.y
+        self.pending.clear();
     }
 
     /// Mark `point` visible; a point outside the rectangle is dropped.
     fn insert(&mut self, point: Point) {
-        if let Some(index) = self.index(point) {
+        if let Some(index) = self.size.index_of(point) {
             self.visible[index] = true;
             self.min = Point::new(self.min.x.min(point.x), self.min.y.min(point.y));
             self.max = Point::new(self.max.x.max(point.x), self.max.y.max(point.y));
@@ -170,12 +186,12 @@ impl Fov {
 /// Cells visible from `origin` within `range`, over the rectangle `[0, size.w) × [0, size.h)`.
 ///
 /// `is_opaque` is asked only about cells inside the rectangle. `origin` is visible even when
-/// opaque.
+/// opaque. The result allocates [`GridSize::area`] bytes.
 #[must_use]
 pub fn field_of_view(
     origin: Point,
     range: u32,
-    size: impl Into<GridSize>,
+    size: GridSize,
     is_opaque: impl FnMut(Point) -> bool,
 ) -> Fov {
     let mut fov = Fov::new();
@@ -233,6 +249,15 @@ impl Octant {
     }
 }
 
+/// One pending octant scan: a row at `distance`, lit between the two slopes.
+#[derive(Clone, Copy)]
+struct Scan {
+    octant: Octant,
+    distance: i32,
+    start_slope: f32,
+    end_slope: f32,
+}
+
 /// Whether coordinate `c` has left `[0, extent)` on the side `sign` walks toward.
 fn beyond(c: i32, sign: i32, extent: i32) -> bool {
     if sign > 0 {
@@ -260,13 +285,13 @@ struct Scanner<'a, F> {
 
 impl<F: FnMut(Point) -> bool> Scanner<'_, F> {
     fn is_transparent(&mut self, point: Point) -> bool {
-        self.fov.in_bounds(point) && !(self.is_opaque)(point)
+        self.fov.size.contains(point) && !(self.is_opaque)(point)
     }
 
     #[allow(clippy::cast_precision_loss)]
     fn distance_to_center(&self, point: Point) -> f32 {
-        let dx = i32::abs(point.x - self.center.x) as f32 - 0.5;
-        let dy = i32::abs(point.y - self.center.y) as f32 - 0.5;
+        let dx = point.x.abs_diff(self.center.x) as f32 - 0.5;
+        let dy = point.y.abs_diff(self.center.y) as f32 - 0.5;
         dx * dx + dy * dy
     }
 
@@ -276,9 +301,9 @@ impl<F: FnMut(Point) -> bool> Scanner<'_, F> {
         let mut visibility_per_sector = [false; 8];
         for (visible, (dx, dy)) in visibility_per_sector.iter_mut().zip(SECTORS) {
             let mut current = self.center;
-            loop {
-                current = Point::new(current.x + dx, current.y + dy);
-                if !self.fov.in_bounds(current) {
+            while let (Some(x), Some(y)) = (current.x.checked_add(dx), current.y.checked_add(dy)) {
+                current = Point::new(x, y);
+                if !self.fov.size.contains(current) {
                     break;
                 }
                 if current.square_distance_to(self.center) > self.range_2 {
@@ -307,58 +332,87 @@ impl<F: FnMut(Point) -> bool> Scanner<'_, F> {
         self.is_transparent(point)
     }
 
+    /// Run every scan of one octant, depth-first, without recursion.
+    fn scan_octant(&mut self, octant: Octant) {
+        self.fov.pending.push(Scan {
+            octant,
+            distance: 1,
+            start_slope: 0.,
+            end_slope: 1.,
+        });
+        while let Some(scan) = self.fov.pending.pop() {
+            self.scan(scan);
+        }
+    }
+
     #[allow(clippy::cast_possible_truncation, clippy::cast_precision_loss)]
-    fn scan(&mut self, octant: Octant, distance: i32, start_slope: f32, end_slope: f32) {
-        let mut start_slope = start_slope;
-
-        if distance.unsigned_abs().saturating_pow(2) > self.range_2 {
-            return;
-        }
-
+    fn scan(&mut self, scan: Scan) {
+        let Scan {
+            octant,
+            mut distance,
+            mut start_slope,
+            end_slope,
+        } = scan;
         let (center_d, center_t) = octant.split(self.center);
-        let (extent_d, extent_t) = octant.split(self.fov.size);
-        if beyond(
-            center_d + octant.primary * distance,
-            octant.primary,
-            extent_d,
-        ) {
-            return;
-        }
+        let extent = Point::new(self.fov.size.width(), self.fov.size.height());
+        let (extent_d, extent_t) = octant.split(extent);
 
-        let start_t = (start_slope * distance as f32 + 0.5) as i32;
-        if beyond(
-            center_t + octant.secondary * start_t,
-            octant.secondary,
-            extent_t,
-        ) {
-            return;
-        }
-
-        let end_t = ((end_slope * distance as f32 + 0.5) as i32).min(last_offset(
-            center_t,
-            octant.secondary,
-            extent_t,
-        ));
-
-        let mut last_visible = self.is_transparent(octant.point(self.center, distance, start_t));
-        for t in start_t..=end_t {
-            let current = octant.point(self.center, distance, t);
-            let is_visible = self.insert_visible(current, t);
-
-            if last_visible && !is_visible {
-                self.scan(
-                    octant,
-                    distance + 1,
-                    start_slope,
-                    (t as f32 - 0.5) / (distance as f32 + 0.5),
-                );
-            } else if !last_visible && is_visible {
-                start_slope = (t as f32 - 0.5) / (distance as f32 - 0.5);
+        // Each pass is one row; a lit row end continues on the next row here, and only a
+        // shadow edge mid-row waits on the stack, so the stack grows with obstacles, not range.
+        loop {
+            if distance.unsigned_abs().saturating_pow(2) > self.range_2 {
+                return;
             }
-            last_visible = is_visible;
-        }
-        if last_visible {
-            self.scan(octant, distance + 1, start_slope, end_slope);
+            if beyond(
+                center_d + octant.primary * distance,
+                octant.primary,
+                extent_d,
+            ) {
+                return;
+            }
+
+            let start_t = (start_slope * distance as f32 + 0.5) as i32;
+            if beyond(
+                center_t + octant.secondary * start_t,
+                octant.secondary,
+                extent_t,
+            ) {
+                return;
+            }
+
+            let end_t = ((end_slope * distance as f32 + 0.5) as i32).min(last_offset(
+                center_t,
+                octant.secondary,
+                extent_t,
+            ));
+
+            let mut last_visible =
+                self.is_transparent(octant.point(self.center, distance, start_t));
+            for t in start_t..=end_t {
+                let current = octant.point(self.center, distance, t);
+                let is_visible = self.insert_visible(current, t);
+
+                if last_visible && !is_visible {
+                    if let Some(next) = distance.checked_add(1) {
+                        self.fov.pending.push(Scan {
+                            octant,
+                            distance: next,
+                            start_slope,
+                            end_slope: (t as f32 - 0.5) / (distance as f32 + 0.5),
+                        });
+                    }
+                } else if !last_visible && is_visible {
+                    start_slope = (t as f32 - 0.5) / (distance as f32 - 0.5);
+                }
+                last_visible = is_visible;
+            }
+            if !last_visible {
+                return;
+            }
+            let Some(next) = distance.checked_add(1) else {
+                return;
+            };
+            distance = next;
         }
     }
 }
@@ -602,9 +656,41 @@ mod tests {
     }
 
     #[test]
-    fn size_accepts_a_tuple() {
-        let fov = field_of_view(Point::new(1, 1), 1, (4, 3), |_| false);
-        assert_eq!(fov.size(), GridSize::new(4, 3));
+    fn zero_sided_grid_sees_nothing() {
+        let fov = field_of_view(Point::new(0, 0), 5, GridSize::new(0, 3), |_| false);
+        assert_eq!(fov.size(), GridSize::new(0, 3));
+        assert_eq!(fov.iter().count(), 0);
+    }
+
+    #[test]
+    fn an_extreme_origin_sees_nothing_and_does_not_panic() {
+        for origin in [
+            Point::new(i32::MIN, 2),
+            Point::new(i32::MAX, 2),
+            Point::new(2, i32::MIN),
+            Point::new(2, i32::MAX),
+            Point::new(i32::MIN, i32::MIN),
+            Point::new(i32::MAX, i32::MAX),
+        ] {
+            let fov = field_of_view(origin, 10, GridSize::new(5, 5), |_| false);
+            assert_eq!(fov.iter().count(), 0, "{origin:?}");
+        }
+    }
+
+    #[test]
+    fn a_long_range_scan_does_not_overflow_the_stack() {
+        // From a grid end the recursive scan would nest once per tile: 10 000 frames.
+        let handle = std::thread::Builder::new()
+            .stack_size(2 * 1024 * 1024)
+            .spawn(|| {
+                field_of_view(Point::new(0, 0), u32::MAX, GridSize::new(10_000, 1), |_| {
+                    false
+                })
+                .iter()
+                .count()
+            })
+            .unwrap();
+        assert_eq!(handle.join().unwrap(), 10_000);
     }
 
     #[test]

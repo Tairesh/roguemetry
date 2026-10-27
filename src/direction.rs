@@ -1,36 +1,37 @@
 use std::cmp::Ordering::{Equal, Greater, Less};
+use std::ops::Mul;
+
+use num_traits::{Float, FloatConst};
 
 use super::{Point, Vec2};
 
+/// The eight directions clockwise from North; index × π/4 is the angle (see [`Direction`]).
 pub const DIR8: [Direction; 8] = [
+    Direction::North,
+    Direction::NorthEast,
     Direction::East,
     Direction::SouthEast,
     Direction::South,
     Direction::SouthWest,
     Direction::West,
     Direction::NorthWest,
-    Direction::North,
-    Direction::NorthEast,
 ];
 
+/// `Here` followed by [`DIR8`].
 pub const DIR9: [Direction; 9] = [
     Direction::Here,
+    Direction::North,
+    Direction::NorthEast,
     Direction::East,
     Direction::SouthEast,
     Direction::South,
     Direction::SouthWest,
     Direction::West,
     Direction::NorthWest,
-    Direction::North,
-    Direction::NorthEast,
 ];
 
-/// The four orthogonal directions, clockwise from North — the neighbours that
-/// share an edge with a tile rather than only a corner.
-///
-/// Clockwise like [`DIR8`], but entered at North rather than East, because that
-/// is the order the four are conventionally named in. It is therefore a rotation
-/// of `DIR8`'s orthogonal subsequence, not a slice of it.
+/// The four orthogonal directions — every other one of [`DIR8`], clockwise from North. They are
+/// the neighbours that share an edge with a tile rather than only a corner.
 pub const DIR4: [Direction; 4] = [
     Direction::North,
     Direction::East,
@@ -65,6 +66,14 @@ pub const DIR2_EDGE_ONCE: [(Direction, Direction); 2] = [
     (Direction::South, Direction::North),
 ];
 
+/// One of the eight compass directions, or `Here`.
+///
+/// Screen convention: y grows downward, so North is `(0, -1)`. Turns go clockwise from North,
+/// in [`DIR8`] order.
+///
+/// Angles follow the same convention: North is 0 and each [`DIR8`] step adds π/4, clockwise.
+/// [`Direction::from_angle`] and [`Direction::nearest`] round to the nearest direction; when
+/// `θ / (π/4)` is exactly halfway between two integers the clockwise one wins.
 #[derive(Debug, Default, Copy, Clone, PartialEq, Eq, Hash)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum Direction {
@@ -104,6 +113,7 @@ impl Direction {
 
     /// The direction facing back along this one. `Here` has no opposite and is
     /// returned unchanged, which is what makes this total.
+    #[inline]
     #[must_use]
     pub const fn opposite(self) -> Self {
         match self {
@@ -119,8 +129,79 @@ impl Direction {
         }
     }
 
+    /// Position in [`DIR8`]; `None` for `Here`.
+    const fn dir8_index(self) -> Option<usize> {
+        match self {
+            Direction::Here => None,
+            Direction::North => Some(0),
+            Direction::NorthEast => Some(1),
+            Direction::East => Some(2),
+            Direction::SouthEast => Some(3),
+            Direction::South => Some(4),
+            Direction::SouthWest => Some(5),
+            Direction::West => Some(6),
+            Direction::NorthWest => Some(7),
+        }
+    }
+
+    /// Turned by `eighths` of a circle, clockwise when positive. `Here` stays `Here`.
+    #[inline]
+    #[must_use]
+    pub const fn rotated(self, eighths: i32) -> Self {
+        match self.dir8_index() {
+            None => Direction::Here,
+            Some(i) => DIR8[(i + eighths.rem_euclid(8) as usize) % 8],
+        }
+    }
+
+    #[inline]
+    #[must_use]
+    pub const fn rotate_cw(self) -> Self {
+        self.rotated(1)
+    }
+
+    #[inline]
+    #[must_use]
+    pub const fn rotate_ccw(self) -> Self {
+        self.rotated(-1)
+    }
+
+    /// This direction's angle in `[0, 2π)` (see [`Direction`]); `None` for `Here`.
+    #[must_use]
+    pub fn angle<T: Float + FloatConst>(self) -> Option<T> {
+        let i = self.dir8_index()?;
+        Some(T::from(i).unwrap_or_else(T::zero) * T::FRAC_PI_4())
+    }
+
+    /// The direction nearest angle `theta` (see [`Direction`]); `Here` for NaN or ±∞. Very large
+    /// angles are only as precise as their reduction by 2π.
+    #[must_use]
+    pub fn from_angle<T: Float + FloatConst>(theta: T) -> Self {
+        if !theta.is_finite() {
+            return Direction::Here;
+        }
+        let one = T::one();
+        let half = one / (one + one);
+        let eight = T::from(8).unwrap_or(one);
+        let x = (theta % T::TAU()) / T::FRAC_PI_4();
+        let f = x.floor();
+        let k = if x - f >= half { f + one } else { f };
+        let m = k - eight * (k / eight).floor();
+        DIR8[m.to_usize().unwrap_or(0) % 8]
+    }
+
+    /// The direction nearest vector `v` (see [`Direction`]); `Here` for a zero or NaN vector.
+    #[must_use]
+    pub fn nearest<T: Float + FloatConst>(v: vek::Vec2<T>) -> Self {
+        if v.x.is_nan() || v.y.is_nan() || (v.x.is_zero() && v.y.is_zero()) {
+            return Direction::Here;
+        }
+        Self::from_angle(v.x.atan2(-v.y))
+    }
+
     /// True for the four edge-sharing directions. `Here` is neither orthogonal
     /// nor diagonal.
+    #[inline]
     #[must_use]
     pub fn is_orthogonal(self) -> bool {
         matches!(
@@ -131,20 +212,14 @@ impl Direction {
 
     #[cfg(feature = "rand")]
     pub fn random<R: rand::Rng + rand::RngExt + ?Sized>(rng: &mut R, include_here: bool) -> Self {
-        match rng.random_range(0..=if include_here { 8 } else { 7 }) {
-            0 => Direction::East,
-            1 => Direction::SouthEast,
-            2 => Direction::South,
-            3 => Direction::SouthWest,
-            4 => Direction::West,
-            5 => Direction::NorthWest,
-            6 => Direction::North,
-            7 => Direction::NorthEast,
-            8 => Direction::Here,
-            _ => unreachable!(),
+        if include_here {
+            DIR9[rng.random_range(0..DIR9.len())]
+        } else {
+            DIR8[rng.random_range(0..DIR8.len())]
         }
     }
 
+    #[inline]
     #[must_use]
     pub fn from_delta(dx: i32, dy: i32) -> Self {
         match (dx.cmp(&0), dy.cmp(&0)) {
@@ -160,6 +235,7 @@ impl Direction {
         }
     }
 
+    #[inline]
     #[must_use]
     pub fn dx(self) -> i32 {
         match self {
@@ -169,6 +245,7 @@ impl Direction {
         }
     }
 
+    #[inline]
     #[must_use]
     pub fn dy(self) -> i32 {
         match self {
@@ -178,11 +255,13 @@ impl Direction {
         }
     }
 
+    #[inline]
     #[must_use]
     pub fn is_here(self) -> bool {
         self == Direction::Here
     }
 
+    #[inline]
     #[must_use]
     pub fn is_diagonal(self) -> bool {
         matches!(
@@ -211,6 +290,16 @@ impl From<Direction> for Vec2 {
     #[allow(clippy::cast_precision_loss)]
     fn from(dir: Direction) -> Self {
         Vec2::new(dir.dx() as f32, dir.dy() as f32)
+    }
+}
+
+impl Mul<i32> for Direction {
+    type Output = Point;
+
+    /// `n` steps along this direction, as an offset.
+    #[inline]
+    fn mul(self, n: i32) -> Point {
+        Point::new(self.dx() * n, self.dy() * n)
     }
 }
 
@@ -244,18 +333,76 @@ mod tests {
     }
 
     #[test]
-    fn dir4_is_the_orthogonal_half_of_dir8() {
-        let mut from_four = DIR4;
-        let mut from_eight: Vec<Direction> =
-            DIR8.into_iter().filter(|d| d.is_orthogonal()).collect();
-        from_four.sort_by_key(|d| format!("{d:?}"));
-        from_eight.sort_by_key(|d| format!("{d:?}"));
+    fn dir8_runs_clockwise_from_north() {
         assert_eq!(
-            from_four.to_vec(),
-            from_eight,
-            "same four, whatever the order"
+            DIR8,
+            [
+                Direction::North,
+                Direction::NorthEast,
+                Direction::East,
+                Direction::SouthEast,
+                Direction::South,
+                Direction::SouthWest,
+                Direction::West,
+                Direction::NorthWest,
+            ]
         );
+        assert_eq!(DIR9[0], Direction::Here);
+        assert_eq!(DIR9[1..], DIR8);
+    }
+
+    #[test]
+    fn dir4_is_every_other_dir8() {
+        assert_eq!(DIR4, [DIR8[0], DIR8[2], DIR8[4], DIR8[6]]);
         assert_eq!(DIR4, Direction::orthogonals());
+    }
+
+    #[test]
+    fn rotate_cw_is_an_eighth_turn_clockwise() {
+        // Two eighths make a clockwise quarter: (x, y) → (−y, x) with y pointing down.
+        for d in DIR8 {
+            let q = d.rotate_cw().rotate_cw();
+            assert_eq!((q.dx(), q.dy()), (-d.dy(), d.dx()), "{d:?}");
+            assert_eq!(d.rotate_cw().rotate_ccw(), d, "{d:?}");
+        }
+        assert_eq!(Direction::North.rotate_cw(), Direction::NorthEast);
+        assert_eq!(Direction::North.rotated(2), Direction::East);
+    }
+
+    #[test]
+    fn rotated_is_repeated_eighth_turns() {
+        for d in DIR8 {
+            for k in -16..16_i32 {
+                let mut e = d;
+                for _ in 0..k.unsigned_abs() {
+                    e = if k > 0 { e.rotate_cw() } else { e.rotate_ccw() };
+                }
+                assert_eq!(d.rotated(k), e, "{d:?} by {k}");
+            }
+            assert_eq!(d.rotated(8), d);
+            assert_eq!(d.rotated(i32::MAX), d.rotate_ccw(), "i32::MAX ≡ 7 (mod 8)");
+            assert_eq!(d.rotated(i32::MIN), d, "i32::MIN ≡ 0 (mod 8)");
+        }
+        assert_eq!(Direction::Here.rotated(3), Direction::Here);
+        assert_eq!(Direction::Here.rotate_cw(), Direction::Here);
+    }
+
+    const _: Direction = Direction::North.rotated(i32::MIN);
+
+    #[cfg(feature = "rand")]
+    #[test]
+    fn random_draws_from_dir8_or_dir9() {
+        use rand::SeedableRng;
+        let mut rng = rand::rngs::Xoshiro256PlusPlus::seed_from_u64(7);
+        let without: Vec<Direction> = (0..400)
+            .map(|_| Direction::random(&mut rng, false))
+            .collect();
+        assert!(!without.contains(&Direction::Here));
+        assert!(DIR8.iter().all(|d| without.contains(d)));
+        let with: Vec<Direction> = (0..400)
+            .map(|_| Direction::random(&mut rng, true))
+            .collect();
+        assert!(with.contains(&Direction::Here));
     }
 
     #[test]
@@ -345,5 +492,75 @@ mod tests {
         }
         assert!(!Direction::Here.is_orthogonal());
         assert!(!Direction::Here.is_diagonal());
+    }
+
+    fn angles_hold<T>(below_tie: T, big: T)
+    where
+        T: num_traits::Float + num_traits::FloatConst + std::fmt::Debug,
+    {
+        let two = T::one() + T::one();
+        for (i, d) in (0u8..).zip(DIR8) {
+            let expected = T::from(i).unwrap() * T::FRAC_PI_4();
+            assert_eq!(d.angle::<T>(), Some(expected), "{d:?}");
+            assert_eq!(Direction::from_angle(expected), d, "{d:?} round trip");
+        }
+        assert_eq!(Direction::Here.angle::<T>(), None);
+        assert_eq!(Direction::North.angle::<T>(), Some(T::zero()));
+        assert_eq!(Direction::East.angle::<T>(), Some(T::FRAC_PI_2()));
+        assert_eq!(Direction::South.angle::<T>(), Some(T::PI()));
+
+        assert_eq!(Direction::from_angle(T::FRAC_PI_8()), Direction::NorthEast);
+        assert_eq!(Direction::from_angle(-T::FRAC_PI_8()), Direction::North);
+        assert_eq!(Direction::from_angle(below_tie), Direction::North);
+        for theta in [T::max_value(), T::max_value() / two, big] {
+            assert_ne!(Direction::from_angle(theta), Direction::Here, "{theta:?}");
+            assert_ne!(Direction::from_angle(-theta), Direction::Here, "{theta:?}");
+        }
+        for theta in [T::nan(), T::infinity(), T::neg_infinity()] {
+            assert_eq!(Direction::from_angle(theta), Direction::Here, "{theta:?}");
+        }
+
+        for d in DIR8 {
+            let v = vek::Vec2::new(T::from(d.dx()).unwrap(), T::from(d.dy()).unwrap());
+            assert_eq!(Direction::nearest(v), d, "{d:?}");
+        }
+        let (z, nz) = (T::zero(), -T::zero());
+        for (x, y) in [(z, z), (nz, z), (z, nz), (nz, nz)] {
+            assert_eq!(Direction::nearest(vek::Vec2::new(x, y)), Direction::Here);
+        }
+        assert_eq!(
+            Direction::nearest(vek::Vec2::new(T::nan(), T::one())),
+            Direction::Here
+        );
+        assert_eq!(
+            Direction::nearest(vek::Vec2::new(T::one(), T::nan())),
+            Direction::Here
+        );
+        assert_eq!(
+            Direction::nearest(vek::Vec2::new(T::infinity(), T::infinity())),
+            Direction::SouthEast
+        );
+    }
+
+    #[test]
+    fn angles_f32() {
+        let below_tie = f32::from_bits(std::f32::consts::FRAC_PI_8.to_bits() - 1);
+        angles_hold(below_tie, 1e30_f32);
+    }
+
+    #[test]
+    fn angles_f64() {
+        let below_tie = f64::from_bits(std::f64::consts::FRAC_PI_8.to_bits() - 1);
+        angles_hold(below_tie, 1e300_f64);
+    }
+
+    #[test]
+    fn direction_times_n_is_n_steps() {
+        for d in DIR9 {
+            assert_eq!(d * 3, Point::new(d.dx() * 3, d.dy() * 3), "{d:?}");
+        }
+        assert_eq!(Direction::Here * 5, Point::new(0, 0));
+        assert_eq!(Direction::East * -2, Point::new(-2, 0));
+        assert_eq!(Point::new(1, 1) + Direction::South * 4, Point::new(1, 5));
     }
 }

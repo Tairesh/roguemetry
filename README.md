@@ -16,18 +16,17 @@ It's mainly made for my roguelikes, like [Followers Of The Midia](https://github
 *   Arithmetic operations: addition and subtraction with `Direction`, `(i32, i32)` tuples, `Point`s, or `vek::Vec2`; multiplication and division with `i32` scalars, `f32` scalars, `(i32, i32)` tuples, `(f32, f32)` tuples, `Point`s, or `vek::Vec2`.
     *   Distance calculations (Euclidean and squared distance).
     *   Line drawing to another `Point` using Bresenham's line algorithm.
-    *   Conversion to and from map/grid indices.
-*   **Direction (`Direction`, `DIR8`, `DIR9`)**: Represents cardinal and intercardinal directions (e.g., North, NorthWest). Useful for grid-based movements.
+*   **Direction (`Direction`, `DIR4`, `DIR8`, `DIR9`)**: The eight compass directions plus `Here`. `DIR8` runs clockwise from North. Turn with `rotated(eighths)`, `rotate_cw()`, `rotate_ccw()`; convert with `angle()`, `from_angle(θ)` and `nearest(vector)` (y points down, North is 0, angles grow clockwise, exact halfway ties go clockwise); step with `point + dir * n`.
+*   **Grid size (`GridSize`)**: A grid's `w × h` with row-major indexing: `contains`, `index_of`, `point_at`, `tiles()`, `rows()`, and the index neighbours `north_of`/`east_of`/`south_of`/`west_of`. Each side is at most `i32::MAX`; `GridSize::try_from((w, h))` reports out-of-range sides as `GridSizeError`.
 *   **1D Direction (`OneDimensionalDirection`)**: Represents horizontal-only directions (East or West), useful in specific contexts (like direction sprite looking at). It includes error handling for conversions from the more general `Direction` type (which can represent vertical or diagonal movements).
 *   **Circles**:
     *   Generate points for a circle outline using `circles::circle(center: Point, radius: u32)`.
     *   Pre-defined constant arrays of points for circles of various radii (e.g., `CIRCLE5`, `CIRCLE7`, `CIRCLE9`, `CIRCLE11`, `CIRCLE13`).
-*   **Field of view (`field_of_view`, `Fov`)**: Recursive shadowcasting over a `size` rectangle with an `is_opaque(Point)` callback, returning a dense `Fov` grid (`contains`, row-major `iter`). `Fov::compute` recasts into an existing `Fov` without reallocating. Gives the same cells as `bracket-pathfinding` 0.8.7's `field_of_view_set`.
+*   **Field of view (`field_of_view`, `Fov`)**: Shadowcasting over a `GridSize` rectangle with an `is_opaque(Point)` callback, returning a dense `Fov` grid (`contains`, row-major `iter`). `Fov::compute` recasts into an existing `Fov` without reallocating. Gives the same cells as `bracket-pathfinding` 0.8.7's `field_of_view_set`.
 *   **CP437 Module (`cp437`)**: Provides support related to Code Page 437 (likely for character encoding or specific character sets, e.g. for roguelikes).
 *   **Type Aliases**:
     *   `Vec2` as an alias for `vek::Vec2<f32>`.
     *   `Rect` as an alias for `vek::Rect<f32, f32>`.
-    *   `GridSize` as an alias for `vek::Extent2<u32>`.
 
 ## Usage
 
@@ -92,7 +91,7 @@ You can customize the included features by modifying the dependency in your `Car
 
 ```toml
 [dependencies.roguemetry]
-version = "0.1.0" # Replace with the desired version
+version = "0.4.0" # Replace with the desired version
 default-features = false
 features = ["serde"] # Example: only enable serde
 ```
@@ -103,7 +102,7 @@ To use the `roguemetry` library in your Rust project, add the following to your 
 
 ```toml
 [dependencies]
-roguemetry = "0.3.1" # Replace with the latest version if different
+roguemetry = "0.4.0" # Replace with the latest version if different
 ```
 
 Then, run `cargo build` or `cargo run` to download and compile the dependency.

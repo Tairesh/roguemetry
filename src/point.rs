@@ -1,4 +1,3 @@
-use std::num::NonZeroU32;
 use std::ops::{Add, AddAssign, Div, DivAssign, Mul, MulAssign, Neg, Sub, SubAssign};
 use vek::num_traits::Zero;
 
@@ -45,29 +44,6 @@ impl Point {
         let y = rng.random_range(vertical);
 
         Self::new(x, y)
-    }
-
-    #[inline]
-    #[must_use]
-    /// Helper for map index conversion
-    pub fn to_index(self, width: u32) -> Option<usize> {
-        if self.x < 0 || self.y < 0 || self.x.unsigned_abs() >= width {
-            None
-        } else {
-            (self.y.unsigned_abs() as usize)
-                .checked_mul(width as usize)?
-                .checked_add(self.x.unsigned_abs() as usize)
-        }
-    }
-
-    #[inline]
-    #[must_use]
-    #[allow(clippy::cast_possible_truncation)]
-    #[allow(clippy::cast_possible_wrap)]
-    /// Helper for map index conversion
-    pub fn from_index(index: usize, width: NonZeroU32) -> Point {
-        let width = width.get() as usize;
-        Point::new((index % width) as i32, (index / width) as i32)
     }
 
     #[must_use]
@@ -462,23 +438,7 @@ impl PartialEq<(i32, i32)> for Point {
 
 #[cfg(test)]
 mod tests {
-    use std::num::NonZeroU32;
-
     use super::{Direction, Point, Vec2};
-
-    #[test]
-    fn index_converting() {
-        let pt = Point::new(1, 2);
-        assert_eq!(21, pt.to_index(10).unwrap());
-        let pt2 = Point::from_index(21, NonZeroU32::new(10).unwrap());
-        assert_eq!(pt, pt2);
-        let pt = Point::new(-1, 2);
-        assert!(pt.to_index(10).is_none());
-        let pt = Point::new(1, -2);
-        assert!(pt.to_index(10).is_none());
-        let pt = Point::new(10, 2);
-        assert!(pt.to_index(10).is_none());
-    }
 
     #[test]
     fn add_direction_to_point() {
