@@ -12,4 +12,6 @@ mod point;
 
 pub type Vec2 = vek::Vec2<f32>;
 pub type Rect = vek::Rect<f32, f32>;
-pub type Extent2 = vek::Extent2<u32>;
+pub type GridSize = vek::Extent2<u32>;
+#[deprecated(since = "0.3.1", note = "renamed to `GridSize`")]
+pub type Extent2 = GridSize;

@@ -23,7 +23,7 @@
 //! (<https://github.com/thebracket/bracket-lib>): the same eight 45° rays, the same eight octant
 //! scans and the same `f32` slope arithmetic. The result is a dense grid instead of a hash set.
 
-use super::{Extent2, Point};
+use super::{GridSize, Point};
 
 /// The eight 45° rays cast before the octant scans: N, NE, E, SE, S, SW, W, NW.
 const SECTORS: [(i32, i32); 8] = [
@@ -68,8 +68,8 @@ impl Fov {
 
     #[must_use]
     /// The rectangle the field of view was computed over.
-    pub fn size(&self) -> Extent2 {
-        Extent2::new(self.size.x.unsigned_abs(), self.size.y.unsigned_abs())
+    pub fn size(&self) -> GridSize {
+        GridSize::new(self.size.x.unsigned_abs(), self.size.y.unsigned_abs())
     }
 
     #[must_use]
@@ -92,7 +92,7 @@ impl Fov {
         &mut self,
         origin: Point,
         range: u32,
-        size: impl Into<Extent2>,
+        size: impl Into<GridSize>,
         is_opaque: impl FnMut(Point) -> bool,
     ) {
         // Cells past `i32::MAX` have no `Point`, so the rectangle is clamped to what is addressable.
@@ -175,7 +175,7 @@ impl Fov {
 pub fn field_of_view(
     origin: Point,
     range: u32,
-    size: impl Into<Extent2>,
+    size: impl Into<GridSize>,
     is_opaque: impl FnMut(Point) -> bool,
 ) -> Fov {
     let mut fov = Fov::new();
@@ -365,7 +365,7 @@ impl<F: FnMut(Point) -> bool> Scanner<'_, F> {
 
 #[cfg(test)]
 mod tests {
-    use super::{field_of_view, Extent2, Fov, Point};
+    use super::{field_of_view, Fov, GridSize, Point};
     use crate::circles::CIRCLE5;
     use bracket_pathfinding::prelude::{
         field_of_view_set, Algorithm2D, BaseMap, Point as BracketPoint,
@@ -406,12 +406,12 @@ mod tests {
             self.opaque[usize::try_from(point.y * self.size.x + point.x).unwrap()]
         }
 
-        fn extent(&self) -> Extent2 {
-            Extent2::new(self.size.x.unsigned_abs(), self.size.y.unsigned_abs())
+        fn grid_size(&self) -> GridSize {
+            GridSize::new(self.size.x.unsigned_abs(), self.size.y.unsigned_abs())
         }
 
         fn fov(&self, origin: Point, range: u32) -> Fov {
-            field_of_view(origin, range, self.extent(), |p| self.is_opaque(p))
+            field_of_view(origin, range, self.grid_size(), |p| self.is_opaque(p))
         }
 
         fn bracket(&self, origin: Point, range: u32) -> Vec<Point> {
@@ -501,7 +501,7 @@ mod tests {
                     let grid = Grid::filled(size, |_| rng.random_bool(density));
                     for origin in origins(&mut rng, size) {
                         for range in RANGES {
-                            reused.compute(origin, range, grid.extent(), |p| grid.is_opaque(p));
+                            reused.compute(origin, range, grid.grid_size(), |p| grid.is_opaque(p));
                             let ours: Vec<Point> = reused.iter().collect();
                             assert_eq!(
                                 ours,
@@ -590,7 +590,7 @@ mod tests {
     fn contains_is_false_outside_the_rectangle() {
         let grid = Grid::open(Point::new(3, 3));
         let fov = grid.fov(Point::new(1, 1), 10);
-        assert_eq!(fov.size(), Extent2::new(3, 3));
+        assert_eq!(fov.size(), GridSize::new(3, 3));
         for p in [
             Point::new(-1, 0),
             Point::new(0, -1),
@@ -604,13 +604,13 @@ mod tests {
     #[test]
     fn size_accepts_a_tuple() {
         let fov = field_of_view(Point::new(1, 1), 1, (4, 3), |_| false);
-        assert_eq!(fov.size(), Extent2::new(4, 3));
+        assert_eq!(fov.size(), GridSize::new(4, 3));
     }
 
     #[test]
     fn default_is_empty() {
         let fov = Fov::default();
-        assert_eq!(fov.size(), Extent2::new(0, 0));
+        assert_eq!(fov.size(), GridSize::new(0, 0));
         assert_eq!(fov.iter().count(), 0);
         assert!(!fov.contains(Point::new(0, 0)));
     }

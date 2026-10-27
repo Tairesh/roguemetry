@@ -27,7 +27,7 @@ It's mainly made for my roguelikes, like [Followers Of The Midia](https://github
 *   **Type Aliases**:
     *   `Vec2` as an alias for `vek::Vec2<f32>`.
     *   `Rect` as an alias for `vek::Rect<f32, f32>`.
-    *   `Extent2` as an alias for `vek::Extent2<u32>`.
+    *   `GridSize` as an alias for `vek::Extent2<u32>`.
 
 ## Usage
 
@@ -103,7 +103,7 @@ To use the `roguemetry` library in your Rust project, add the following to your 
 
 ```toml
 [dependencies]
-roguemetry = "0.3.0" # Replace with the latest version if different
+roguemetry = "0.3.1" # Replace with the latest version if different
 ```
 
 Then, run `cargo build` or `cargo run` to download and compile the dependency.

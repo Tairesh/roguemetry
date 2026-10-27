@@ -29,7 +29,7 @@ Default features: `rand`, `serde` (both optional). Code gated behind these featu
 
 ## Architecture
 
-- `src/lib.rs` — Library root, re-exports all modules. Defines `Vec2` (`vek::Vec2<f32>`), `Rect` (`vek::Rect<f32, f32>`) and `Extent2` (`vek::Extent2<u32>`) type aliases.
+- `src/lib.rs` — Library root, re-exports all modules. Defines `Vec2` (`vek::Vec2<f32>`), `Rect` (`vek::Rect<f32, f32>`) and `GridSize` (`vek::Extent2<u32>`) type aliases.
 - `src/point.rs` — `Point` struct (i32 x/y). Extensive operator overloading with Direction, tuples, Vec2, scalars. Map index conversion (`to_index`/`from_index`), distance, line drawing (Bresenham).
 - `src/direction.rs` — `Direction` enum (9 variants including Here). `DIR8`/`DIR9` constants. Converts from deltas, Points, tuples.
 - `src/one_direction.rs` — `OneDimensionalDirection` (East/West only). TryFrom<Direction> with `OneDimensionConvertError`.
