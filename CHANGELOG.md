@@ -6,6 +6,16 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.4.1] - 2026-10-28
+
+### Changed
+
+- Update locked dependencies (`cargo update`).
+
+### Fixed
+
+- `just check` passes on clippy 1.99, which adds the pedantic `assert_is_empty` lint.
+
 ## [0.4.0] - 2026-10-28
 
 ### Added
@@ -97,7 +107,8 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 - `Vec2` and `Rect` aliases over `vek` types.
 - Optional `rand` and `serde` features, both on by default.
 
-[Unreleased]: https://github.com/Tairesh/roguemetry/compare/v0.4.0...HEAD
+[Unreleased]: https://github.com/Tairesh/roguemetry/compare/v0.4.1...HEAD
+[0.4.1]: https://github.com/Tairesh/roguemetry/compare/v0.4.0...v0.4.1
 [0.4.0]: https://github.com/Tairesh/roguemetry/compare/v0.3.1...v0.4.0
 [0.3.1]: https://github.com/Tairesh/roguemetry/compare/v0.3.0...v0.3.1
 [0.3.0]: https://github.com/Tairesh/roguemetry/compare/v0.2.1...v0.3.0

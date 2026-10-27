@@ -91,7 +91,7 @@ You can customize the included features by modifying the dependency in your `Car
 
 ```toml
 [dependencies.roguemetry]
-version = "0.4.0" # Replace with the desired version
+version = "0.4.1" # Replace with the desired version
 default-features = false
 features = ["serde"] # Example: only enable serde
 ```
@@ -102,7 +102,7 @@ To use the `roguemetry` library in your Rust project, add the following to your 
 
 ```toml
 [dependencies]
-roguemetry = "0.4.0" # Replace with the latest version if different
+roguemetry = "0.4.1" # Replace with the latest version if different
 ```
 
 Then, run `cargo build` or `cargo run` to download and compile the dependency.
